@@ -10,7 +10,7 @@ class Board:
         for y in range(size):
             row = []
             for x in range(size):
-                row.append(round(random.random(),1))
+                row.append([round(random.random(), 1), round(random.random(), 1), round(random.random(), 1)])
             self.grid.append(row)
 
     def print(self):
@@ -18,10 +18,6 @@ class Board:
             print(row)
 
     def set_cell(self, x, y, value):
-        if value > 1:
-            value = 1.0
-        if value < 0:
-            value = 0.0
         self.grid[y][x] = value
 
     def get_cell(self, x, y):
@@ -30,19 +26,37 @@ class Board:
     def activate(self, value):
         if value < 0:
             return 0
+        if value > 1:
+            return 1
         return value
 
     def apply_kernel(self, kernel):
         for row_num, row in enumerate(self.grid):
             for col_num, col in enumerate(row):
                 neighbors = self.get_subgrid(row_num, col_num, kernel.size)
-                sum = 0
+                red = 0
                 for x in range(len(kernel.grid)):
                     for y in range(len(kernel.grid)):
-                        sum += kernel.grid[x][y] * neighbors[x][y]
+                        red += kernel.grid[x][y][0] * neighbors[x][y][0]
 
-                average = sum / (kernel.size * kernel.size)
-                self.set_cell(col_num, row_num, self.activate(average))
+                average_red = red / (kernel.size * kernel.size)
+                true_red = self.activate(average_red)
+                green = 0
+                for x in range(len(kernel.grid)):
+                    for y in range(len(kernel.grid)):
+                        green += kernel.grid[x][y][1] * neighbors[x][y][1]
+
+                average_green = green / (kernel.size * kernel.size)
+                true_green = self.activate(average_green)
+
+                blue = 0
+                for x in range(len(kernel.grid)):
+                    for y in range(len(kernel.grid)):
+                        blue += kernel.grid[x][y][2] * neighbors[x][y][2]
+
+                average_blue = blue / (kernel.size * kernel.size)
+                true_blue = self.activate(average_blue)
+                self.set_cell(col_num, row_num, [true_red, true_green, true_blue])
 
 
 
@@ -84,15 +98,17 @@ def display_board(board):
 
     for x in range(img.size[0]):
         for y in range(img.size[1]):
-            colour_value = round(board.get_cell(x, y) * 255)
-            pixels[x, y] = (colour_value, colour_value, colour_value)
+            pixels[x, y] = ((round(board.get_cell(x, y)[0] * 255)), (round(board.get_cell(x, y)[1] * 255)), (round(board.get_cell(x, y)[2] * 255)))
 
     return img
 
 kernel = Board(3)
 display_board(kernel).show()
 
-kernel.grid = [[1, -1, 3], [0.4, 2, 1], [0.2, 2, 0.3]]
+kernel.grid = [
+    [[3, 3, 0.1], [0.5,32, 0.5], [0.1, 3, 3]],
+    [[3, 0.5, 0.1], [0.5, 0.5, 0.5], [0.1, 0.5, 3]],
+    [[3, 0.1, 0.1], [0.5, 0.1, 0.5], [0.1, 0.1, 3]]]
 
 attempts = 5
 for a in range(attempts):
