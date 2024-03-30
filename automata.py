@@ -2,6 +2,7 @@ import math
 import random
 from PIL import Image
 import imageio
+import neat
 
 class Board:
     def __init__(self, size):
@@ -31,12 +32,14 @@ class Board:
         return value
 
     def apply_kernel(self, kernel):
+        difference = 0
         for row_num, row in enumerate(self.grid):
             for col_num, col in enumerate(row):
                 neighbors = self.get_subgrid(row_num, col_num, kernel.size)
                 red = 0
                 for x in range(len(kernel.grid)):
                     for y in range(len(kernel.grid)):
+
                         red += kernel.grid[x][y][0] * neighbors[x][y][0]
 
                 average_red = red / (kernel.size * kernel.size)
@@ -56,9 +59,10 @@ class Board:
 
                 average_blue = blue / (kernel.size * kernel.size)
                 true_blue = self.activate(average_blue)
+                cell = self.get_cell(col_num, row_num)
+                difference += abs((cell[0] - true_red) + (cell[1] - true_green) + (cell[2] - true_blue))
                 self.set_cell(col_num, row_num, [true_red, true_green, true_blue])
-
-
+        return difference
 
     def get_subgrid(self, starting_row, starting_col, size):
         offset = math.floor(size/2)
@@ -91,7 +95,6 @@ class Board:
             i += 1
 
         return subgrid
-
 def display_board(board):
     img = Image.new(mode="RGBA", size=(board.size, board.size))
     pixels = img.load()
@@ -102,29 +105,86 @@ def display_board(board):
 
     return img
 
-kernel = Board(3)
-display_board(kernel).show()
+def run_network(net, id):
+    kernel = Board(5)
+    display_board(kernel).save(f"frames/{id}_kernel.png", "png")
+    for i, row in enumerate(kernel.grid):
+        for j, col in enumerate(row):
+            for k, cha in enumerate(col):
+                output = net.activate((i, j, k))
+                kernel.grid[i][j][k] = output[0]
 
-kernel.grid = [
-    [[3, 3, 0.1], [0.5,32, 0.5], [0.1, 3, 3]],
-    [[3, 0.5, 0.1], [0.5, 0.5, 0.5], [0.1, 0.5, 3]],
-    [[3, 0.1, 0.1], [0.5, 0.1, 0.5], [0.1, 0.1, 3]]]
+    attempts = 1
+    scores = []
+    for a in range(attempts):
+        total_score = 0
+        board = Board(25)
+        names = []
+        iterations = 50
+        for i in range(iterations):
+            name = f"frames/{id}_run_{a}_frame_{i}.png"
+            display_board(board).save(name, "png")
+            names.append(name)
+            score = board.apply_kernel(kernel)
+            total_score += score * iterations
 
-attempts = 5
-for a in range(attempts):
-    board = Board(100)
-    names = []
-    iterations = 100
-    for i in range(100):
-        display_board(board).save(f"frames/frame_{i}.png", "png")
-        names.append(f"frames/frame_{i}.png")
-        board.apply_kernel(kernel)
-        if i % 5 == 0:
-            print(f"Iteration {i}/{iterations} Complete")
+            if score < 20 * iterations:
+                total_score /= 2
+            #if i % 5 == 0:
+                #print(f"Iteration {i}/{iterations} Complete")
 
-    print("Compiling GIF")
-    images = []
-    for filename in names:
-        images.append(imageio.imread(filename))
-    imageio.mimsave(f'frames_{a}.gif', images)
-    print("Attempt 1 Complete")
+        #print("Compiling GIF")
+        try:
+            images = []
+            for filename in names:
+                images.append(imageio.imread(filename))
+            imageio.mimsave(f'results/{id}_frames_{a}.gif', images)
+            #print("Attempt 1 Complete")
+        except:
+            print(f"Could not make gif for: {id}")
+        scores.append(total_score)
+
+    return sum(scores) / len(scores)
+def eval_genomes(genomes, config):
+    for genome_id, genome in genomes:
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        genome.fitness = run_network(net, genome_id)
+
+import os
+import neat
+
+def run(config_file):
+    # Load configuration.
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_file)
+
+    # Create the population, which is the top-level object for a NEAT run.
+    p = neat.Population(config)
+
+    # Add a stdout reporter to show progress in the terminal.
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+    p.add_reporter(neat.Checkpointer(5))
+
+    # Run for up to 300 generations.
+    winner = p.run(eval_genomes, 50)
+
+    # Display the winning genome.
+    print('\nBest genome:\n{!s}'.format(winner))
+
+    # Show output of the most fit genome against training data.
+    print('\nOutput:')
+    winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
+    run_network(winner_net, "winner")
+    p.run(eval_genomes, 10)
+
+
+if __name__ == '__main__':
+    # Determine path to configuration file. This path manipulation is
+    # here so that the script will run successfully regardless of the
+    # current working directory.
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'config-feedforward')
+    run(config_path)
