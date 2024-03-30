@@ -11,7 +11,10 @@ class Board:
         for y in range(size):
             row = []
             for x in range(size):
-                row.append([round(random.random(), 1), round(random.random(), 1), round(random.random(), 1)])
+                if random.random() > 0.5:
+                    row.append([round(random.random(), 1), round(random.random(), 1), round(random.random(), 1)])
+                else:
+                    row.append([0, 0, 0])
             self.grid.append(row)
 
     def print(self):
@@ -105,20 +108,20 @@ def display_board(board):
 
     return img
 
-def run_network(net, id):
-    kernel = Board(5)
+def run_network(net, id, board_size):
+    kernel = Board(7)
     display_board(kernel).save(f"frames/{id}_kernel.png", "png")
     for i, row in enumerate(kernel.grid):
         for j, col in enumerate(row):
             for k, cha in enumerate(col):
                 output = net.activate((i, j, k))
-                kernel.grid[i][j][k] = output[0]
+                kernel.grid[i][j][k] = output[0] * 2
 
     attempts = 1
     scores = []
     for a in range(attempts):
         total_score = 0
-        board = Board(25)
+        board = Board(board_size)
         names = []
         iterations = 50
         for i in range(iterations):
@@ -126,29 +129,27 @@ def run_network(net, id):
             display_board(board).save(name, "png")
             names.append(name)
             score = board.apply_kernel(kernel)
-            total_score += score * iterations
+            total_score += score * (iterations ** 2)
 
-            if score < 20 * iterations:
-                total_score /= 2
-            #if i % 5 == 0:
-                #print(f"Iteration {i}/{iterations} Complete")
+            #if score < 5 * iterations:
+                #total_score /= 2
 
-        #print("Compiling GIF")
         try:
             images = []
             for filename in names:
                 images.append(imageio.imread(filename))
+                # Add Score to Saved Image
             imageio.mimsave(f'results/{id}_frames_{a}.gif', images)
-            #print("Attempt 1 Complete")
         except:
             print(f"Could not make gif for: {id}")
         scores.append(total_score)
 
     return sum(scores) / len(scores)
+
 def eval_genomes(genomes, config):
     for genome_id, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
-        genome.fitness = run_network(net, genome_id)
+        genome.fitness = run_network(net, genome_id, 25) / 1000
 
 import os
 import neat
@@ -169,7 +170,7 @@ def run(config_file):
     p.add_reporter(neat.Checkpointer(5))
 
     # Run for up to 300 generations.
-    winner = p.run(eval_genomes, 50)
+    winner = p.run(eval_genomes, 100)
 
     # Display the winning genome.
     print('\nBest genome:\n{!s}'.format(winner))
@@ -177,7 +178,7 @@ def run(config_file):
     # Show output of the most fit genome against training data.
     print('\nOutput:')
     winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
-    run_network(winner_net, "winner")
+    run_network(winner_net, "winner", 1000)
     p.run(eval_genomes, 10)
 
 
