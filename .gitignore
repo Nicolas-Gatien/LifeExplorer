@@ -185,3 +185,6 @@ fabric.properties
 .idea
 .DS_Store
 results/.DS_Store
+
+frames
+results

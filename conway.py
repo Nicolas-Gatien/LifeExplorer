@@ -2,6 +2,7 @@ import math
 import random
 from PIL import Image
 import imageio
+import os
 import neat
 
 class Board:
@@ -11,10 +12,10 @@ class Board:
         for y in range(size):
             row = []
             for x in range(size):
-                if random.random() > 0.5:
-                    row.append([round(random.random(), 1), round(random.random(), 1), round(random.random(), 1)])
+                if random.random() > 0.01:
+                    row.append(0)
                 else:
-                    row.append([0, 0, 0])
+                    row.append(1)
             self.grid.append(row)
 
     def print(self):
@@ -26,46 +27,6 @@ class Board:
 
     def get_cell(self, x, y):
         return self.grid[y][x]
-
-    def activate(self, value):
-        if value < 0:
-            return 0
-        if value > 1:
-            return 1
-        return value
-
-    def apply_kernel(self, kernel):
-        difference = 0
-        for row_num, row in enumerate(self.grid):
-            for col_num, col in enumerate(row):
-                neighbors = self.get_subgrid(row_num, col_num, kernel.size)
-                red = 0
-                for x in range(len(kernel.grid)):
-                    for y in range(len(kernel.grid)):
-
-                        red += kernel.grid[x][y][0] * neighbors[x][y][0]
-
-                average_red = red / (kernel.size * kernel.size)
-                true_red = self.activate(average_red)
-                green = 0
-                for x in range(len(kernel.grid)):
-                    for y in range(len(kernel.grid)):
-                        green += kernel.grid[x][y][1] * neighbors[x][y][1]
-
-                average_green = green / (kernel.size * kernel.size)
-                true_green = self.activate(average_green)
-
-                blue = 0
-                for x in range(len(kernel.grid)):
-                    for y in range(len(kernel.grid)):
-                        blue += kernel.grid[x][y][2] * neighbors[x][y][2]
-
-                average_blue = blue / (kernel.size * kernel.size)
-                true_blue = self.activate(average_blue)
-                cell = self.get_cell(col_num, row_num)
-                difference += abs((cell[0] - true_red) + (cell[1] - true_green) + (cell[2] - true_blue))
-                self.set_cell(col_num, row_num, [true_red, true_green, true_blue])
-        return difference
 
     def get_subgrid(self, starting_row, starting_col, size):
         offset = math.floor(size/2)
@@ -98,48 +59,58 @@ class Board:
             i += 1
 
         return subgrid
+
 def display_board(board):
     img = Image.new(mode="RGBA", size=(board.size, board.size))
     pixels = img.load()
 
     for x in range(img.size[0]):
         for y in range(img.size[1]):
-            pixels[x, y] = ((round(board.get_cell(x, y)[0] * 255)), (round(board.get_cell(x, y)[1] * 255)), (round(board.get_cell(x, y)[2] * 255)))
+            pixels[x, y] = ((round(board.get_cell(x, y) * 255)), (round(board.get_cell(x, y) * 255)), (round(board.get_cell(x, y) * 255)))
 
     return img
 
-def run_network(net, id, board_size):
-    kernel = Board(7)
-    display_board(kernel).save(f"frames/{id}_kernel.png", "png")
-    for i, row in enumerate(kernel.grid):
-        for j, col in enumerate(row):
-            for k, cha in enumerate(col):
-                output = net.activate((i, j, k))
-                kernel.grid[i][j][k] = output[0] * 2
+def format_subgrid_as_inputs(grid):
+    inputs = []
+    for row in grid:
+        for col in row:
+            inputs.append(col)
 
+    return inputs
+
+
+def run_network(net, id, board_size):
     attempts = 1
     scores = []
     for a in range(attempts):
         total_score = 0
         board = Board(board_size)
         names = []
-        iterations = 50
+        iterations = 100
         for i in range(iterations):
             name = f"frames/{id}_run_{a}_frame_{i}.png"
             display_board(board).save(name, "png")
-            names.append(name)
-            score = board.apply_kernel(kernel)
-            total_score += score * (iterations ** 2)
+            for y, row in enumerate(board.grid):
+                for x, col in enumerate(row):
+                    subgrid = board.get_subgrid(y, x, 3)
+                    inputs = format_subgrid_as_inputs(subgrid)
+                    output = net.activate(inputs)
+                    if output[0] > 0.5:
+                        output[0] = 1
+                    else:
+                        output[0] = 0
+                    board.set_cell(x, y, output[0])
 
-            #if score < 5 * iterations:
-                #total_score /= 2
+
+            names.append(name)
+            total_score += 1
 
         try:
             images = []
             for filename in names:
                 images.append(imageio.imread(filename))
                 # Add Score to Saved Image
-            imageio.mimsave(f'results/{id}_frames_{a}.gif', images)
+            imageio.mimsave(f'results/0_0_0_{id}_binary_{a}.gif', images)
         except:
             print(f"Could not make gif for: {id}")
         scores.append(total_score)
@@ -149,10 +120,7 @@ def run_network(net, id, board_size):
 def eval_genomes(genomes, config):
     for genome_id, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
-        genome.fitness = run_network(net, genome_id, 25) / 1000
-
-import os
-import neat
+        genome.fitness = run_network(net, genome_id, 75) / 1000
 
 def run(config_file):
     # Load configuration.
@@ -187,5 +155,5 @@ if __name__ == '__main__':
     # here so that the script will run successfully regardless of the
     # current working directory.
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'continuous-config-feedforward')
+    config_path = os.path.join(local_dir, 'conway-config-feedforward')
     run(config_path)
